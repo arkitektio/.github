@@ -8,7 +8,7 @@ This organization hosts a multitude of projects that make up the Arkitekt framew
 
 - Arkitekt Core/Server
 - Arkitekt SDK
-- Arktitekt Apps
+- [Arktitekt Apps](https://github.com/arkitektio-apps)
 
 ### Arkitekt Core
 
