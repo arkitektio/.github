@@ -17,6 +17,7 @@ uv run --with tomlkit python <this repo>/python/sync_quality.py <repo>
 cd <repo>
 uv lock && uv sync --all-extras --dev
 uv run ruff check --fix . && uv run ruff format .   # commit as `style:`, add the hash to .git-blame-ignore-revs
+uv run ruff check .                                  # again: wrapping can move a `noqa` off its line
 # fix what is left by hand (mostly annotations)       # commit as `fix:`
 uv run basedpyright --writebaseline                   # commit with the workflow switch
 ```
