@@ -18,6 +18,8 @@ cd <repo>
 uv lock && uv sync --all-extras --dev
 uv run ruff check --fix . && uv run ruff format .   # commit as `style:`, add the hash to .git-blame-ignore-revs
 uv run ruff check .                                  # again: wrapping can move a `noqa` off its line
+# then run the tests: the import sort can break order-dependent imports; keep those
+# blocks in their order between `# isort: off` and `# isort: on`
 # fix what is left by hand (mostly annotations)       # commit as `fix:`
 uv run basedpyright --writebaseline                   # commit with the workflow switch
 ```
