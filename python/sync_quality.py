@@ -47,7 +47,8 @@ TOOL_TYPES = (Table, OutOfOrderTableProxy)
 OLD_SECTIONS = ("ruff", "basedpyright", "pyright", "mypy", "django-stubs")
 
 
-def quality_workflow(python_version: str) -> str:
+def quality_workflow(python_version: str, sync_args: str | None = None) -> str:
+    extra = f'\n      sync-args: "{sync_args}"' if sync_args else ""
     return f"""name: Quality
 
 # The arkitekt Python standard: ruff lint, ruff format and basedpyright (against
@@ -66,8 +67,16 @@ jobs:
   quality:
     uses: arkitektio/.github/.github/workflows/python-quality.yml@main
     with:
-      python-version: "{python_version}"
+      python-version: "{python_version}"{extra}
 """
+
+
+def sync_args_of(workflow: Path) -> str | None:
+    """A repo's own `sync-args` (e.g. a group a typecheck needs): kept across syncs."""
+    if not workflow.exists():
+        return None
+    found = re.search(r'^\s+sync-args:\s*"([^"]*)"', workflow.read_text(), re.MULTILINE)
+    return found.group(1) if found else None
 
 
 def python_version_of(repo: Path, project: dict[str, object]) -> str:
@@ -238,7 +247,10 @@ def sync(repo: Path, check: bool) -> list[str]:
         pyproject_path.write_text(tomlkit.dumps(document))
 
     workflows = repo / ".github" / "workflows"
-    wanted = quality_workflow(python_version_of(repo, project))
+    wanted = quality_workflow(
+        python_version_of(repo, project),
+        sync_args_of(workflows / "quality.yaml"),
+    )
     target = workflows / "quality.yaml"
     if not target.exists() or target.read_text() != wanted:
         drift.append(".github/workflows/quality.yaml differs from the standard")
