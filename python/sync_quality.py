@@ -149,6 +149,22 @@ def ruff_excludes_of(old: dict[str, object]) -> list[str]:
     return excludes
 
 
+def _merge_uv_dev_dependencies(document: tomlkit.TOMLDocument, dev: Array) -> bool:
+    """Move `[tool.uv] dev-dependencies` into `dev`; True when there were any."""
+    tool = document.get("tool")
+    uv = tool.get("uv") if isinstance(tool, TOOL_TYPES) else None
+    if uv is None or "dev-dependencies" not in uv:
+        return False
+    present = {str(item) for item in dev}
+    for item in uv["dev-dependencies"]:
+        if str(item) not in present:
+            dev.append(str(item))
+    del uv["dev-dependencies"]
+    if len(uv) == 0:
+        del tool["uv"]
+    return True
+
+
 def pin_dev_group(document: tomlkit.TOMLDocument) -> bool:
     """Pin ruff and basedpyright in the `dev` group; True when anything changed."""
     groups = document.get("dependency-groups")
@@ -161,11 +177,13 @@ def pin_dev_group(document: tomlkit.TOMLDocument) -> bool:
         dev.multiline(True)
         groups["dev"] = dev
     assert isinstance(dev, Array)
+    # uv's deprecated `[tool.uv] dev-dependencies` is merged into the one dev group,
+    # so the pins below are the only ruff / basedpyright specs left.
+    changed = _merge_uv_dev_dependencies(document, dev)
     wanted = {
         "ruff": f"ruff=={RUFF_VERSION}",
         "basedpyright": f"basedpyright=={BASEDPYRIGHT_VERSION}",
     }
-    changed = False
     for name, spec in wanted.items():
         matches = [
             index
