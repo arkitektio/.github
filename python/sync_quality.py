@@ -32,6 +32,7 @@ import sys
 from pathlib import Path
 
 import tomlkit
+from tomlkit.container import OutOfOrderTableProxy
 from tomlkit.items import Array, Table
 
 RUFF_VERSION = "0.17.6"
@@ -40,6 +41,9 @@ BASEDPYRIGHT_VERSION = "1.40.2"
 HERE = Path(__file__).resolve().parent
 SHARED_FILES = ("ruff.shared.toml", "pyright.shared.json")
 OLD_WORKFLOWS = ("lint.yaml", "lint.yml", "typecheck.yaml", "typecheck.yml")
+#: What `document["tool"]` is: a Table, or a proxy when `[tool.*]` tables are split
+#: across the file (another table between them).
+TOOL_TYPES = (Table, OutOfOrderTableProxy)
 OLD_SECTIONS = ("ruff", "basedpyright", "pyright", "mypy", "django-stubs")
 
 
@@ -172,13 +176,26 @@ def pin_dev_group(document: tomlkit.TOMLDocument) -> bool:
     return changed
 
 
+def _without_tool_section(
+    document: tomlkit.TOMLDocument, section: str
+) -> tomlkit.TOMLDocument:
+    """`document` without `[tool.<section>]` (and without `[tool]` once it is empty)."""
+    fresh = tomlkit.parse(tomlkit.dumps(document))
+    tool = fresh.get("tool")
+    if isinstance(tool, TOOL_TYPES) and section in tool:
+        del tool[section]
+        if len(fresh["tool"]) == 0:
+            del fresh["tool"]
+    return fresh
+
+
 def sync(repo: Path, check: bool) -> list[str]:
     drift: list[str] = []
     pyproject_path = repo / "pyproject.toml"
     document = tomlkit.parse(pyproject_path.read_text())
     project = dict(document.get("project", {}))
     tool = document.get("tool")
-    old_tool = dict(tool) if isinstance(tool, Table) else {}
+    old_tool = dict(tool) if isinstance(tool, TOOL_TYPES) else {}
 
     for name in SHARED_FILES:
         source, target = HERE / name, repo / name
@@ -205,14 +222,13 @@ def sync(repo: Path, check: bool) -> list[str]:
                 initial_pyrightconfig(dict(old_pyright), excludes)
             )
 
-    if isinstance(tool, Table):
-        for section in OLD_SECTIONS:
-            if section in tool:
-                drift.append(f"[tool.{section}] still in pyproject.toml")
-                if not check:
-                    del tool[section]
-        if not check and len(tool) == 0:
-            del document["tool"]
+    # One section at a time, each on a fresh parse: tomlkit's proxy for split
+    # `[tool.*]` tables goes stale after a delete.
+    for section in OLD_SECTIONS:
+        if section in old_tool:
+            drift.append(f"[tool.{section}] still in pyproject.toml")
+            if not check:
+                document = _without_tool_section(document, section)
 
     if pin_dev_group(document):
         drift.append(
